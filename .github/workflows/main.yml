@@ -1,0 +1,43 @@
+name: Build A70Q Kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison flex build-essential \
+            libssl-dev libelf-dev \
+            clang llvm lld \
+            ccache
+
+      - name: Build kernel
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+
+          make <YOUR_DEFCONFIG>
+
+          make -j$(nproc) \
+            CC=clang \
+            LD=ld.lld \
+            LLVM=1
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: a70q-kernel
+          path: |
+            arch/arm64/boot/Image*
