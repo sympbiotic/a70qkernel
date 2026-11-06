@@ -1,107 +1,58 @@
-name: Build Galaxy A70Q Kernel
+name: Build A70Q Cartel Kernel
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - lineage-17.1
+
+env:
+  KERNEL_REPO: https://github.com/YOUR_USERNAME/YOUR_CARTEL_REPO.git
+  KERNEL_BRANCH: main
 
 jobs:
   build:
-    name: Build A70Q Kernel
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout kernel source
-        uses: actions/checkout@v6
+      - name: Checkout kernel
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
-            bc \
-            bison \
-            flex \
-            build-essential \
-            libssl-dev \
-            libelf-dev \
-            libncurses5-dev \
-            libncurses-dev \
-            python3 \
-            zip \
-            unzip \
-            cpio \
-            rsync \
-            git
+            bc bison flex libssl-dev \
+            build-essential git curl ccache \
+            libelf-dev libncurses5-dev
 
-      - name: Show kernel information
+      - name: Check kernel version
         run: |
-          echo "Kernel:"
-          grep -E '^VERSION|^PATCHLEVEL|^SUBLEVEL|^EXTRAVERSION' Makefile || true
+          VERSION=$(make kernelversion)
+          echo "Kernel version: $VERSION"
 
-          echo
-          echo "A70Q / SM6150 defconfigs:"
-          find arch/arm64/configs \
-            -type f \
-            \( -iname '*a70q*' -o -iname '*sm6150*' \) \
-            -print
+      - name: Verify 4.14.x requirement
+        run: |
+          VERSION=$(make kernelversion)
+          case "$VERSION" in
+            4.14.*) echo "Valid 4.14 kernel" ;;
+            *) echo "ERROR: Kernel is not 4.14.x"; exit 1 ;;
+          esac
 
-      - name: Prepare build directory
+      - name: Build
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+
+          make YOUR_A70Q_DEFCONFIG
+          make -j$(nproc)
+
+      - name: Package
         run: |
           mkdir -p out
-
-      - name: Select defconfig
-        run: |
-          DEFCONFIG=$(find arch/arm64/configs \
-            -type f \
-            \( -iname '*a70q*' -o -iname '*sm6150*' \) \
-            | head -n 1)
-
-          if [ -z "$DEFCONFIG" ]; then
-            echo "ERROR: No A70Q/SM6150 defconfig found."
-            exit 1
-          fi
-
-          DEFCONFIG_NAME=$(basename "$DEFCONFIG")
-
-          echo "DEFCONFIG=$DEFCONFIG_NAME" >> "$GITHUB_ENV"
-
-          echo "Using:"
-          echo "$DEFCONFIG_NAME"
-
-      - name: Configure kernel
-        run: |
-          make O="$PWD/out" \
-            ARCH=arm64 \
-            "$DEFCONFIG"
-
-      - name: Build kernel
-        run: |
-          make O="$PWD/out" \
-            ARCH=arm64 \
-            -j"$(nproc)"
-
-      - name: Show output
-        if: always()
-        run: |
-          echo "===== Kernel output ====="
-
-          find out/arch/arm64/boot \
-            -maxdepth 3 \
-            -type f \
-            -print 2>/dev/null || true
+          cp arch/arm64/boot/Image out/
 
       - name: Upload kernel
-        if: success()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
-          name: a70q-kernel
-          path: |
-            out/arch/arm64/boot/Image
-            out/arch/arm64/boot/Image.gz
-            out/arch/arm64/boot/Image.gz-dtb
-            out/arch/arm64/boot/dts/**/*.dtb
-          if-no-files-found: warn
+          name: a70q-cartel-kernel
+          path: out/
